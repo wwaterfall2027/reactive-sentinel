@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel Live</title>
+<meta name="description" content="Live view of Sentinel: a neural network running inside a Reactive contract that scores every swap and trips a circuit breaker on Base Sepolia.">
+<style>
+  :root { --bg: #f6f6fb; --surface: #fff; --ink: #171728; --muted: #5f6178; --line: #e2e2ee; --accent: #6d28d9; --ok: #0f8a6c; --bad: #c0362c; --warn: #b45309; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0f0f18; --surface: #181826; --ink: #ececf6; --muted: #a0a2b8; --line: #2b2b40; --accent: #a78bfa; --ok: #34d399; --bad: #f87171; --warn: #fbbf24; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1000px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1 { margin: 0 0 4px; font-size: 28px; } h2 { font-size: 19px; margin: 32px 0 10px; }
+  .lede { font-size: 16px; max-width: 780px; } .muted { color: var(--muted); font-size: 13px; }
+  a { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .card, .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card .k { color: var(--muted); font-size: 13px; } .card .v { font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; border-top: 0; }
+  .tablewrap { overflow-x: auto; }
+  .sl { display: grid; grid-template-columns: 150px 1fr 90px; gap: 10px; align-items: center; margin: 8px 0; }
+  .sl input[type=range] { width: 100%; accent-color: var(--accent); }
+  .sl output { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+  .verdict { display: flex; gap: 18px; flex-wrap: wrap; align-items: baseline; margin-top: 12px; }
+  .verdict .big { font-size: 28px; font-weight: 800; }
+  .bar { height: 10px; border-radius: 6px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .bar > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+  @media (max-width: 560px) { .sl { grid-template-columns: 1fr 70px; } .sl label { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sentinel Live</h1>
+  <p class="lede">A 6-8-1 neural network runs <b>inside a Reactive contract</b> on Lasna. It scores every swap of a pool on Base Sepolia. When the score turns positive, it calls a circuit breaker on Base Sepolia that freezes withdrawals. Everything on this page is read from the deployed contracts as it loads.</p>
+  <p class="muted" id="status">Loading from Reactive Lasna and Base Sepolia…</p>
+
+  <h2>Right now</h2>
+  <div class="grid" id="cards"></div>
+
+  <h2>Ask the deployed neural network</h2>
+  <div class="panel">
+    <p class="muted" style="margin-top:0">Set the last three price moves of the pool (newest first). Every change calls <code>scoreOf()</code> on the deployed Sentinel. It is a pure function, so the answer comes from the same on-chain weights that score real swaps, and it is free.</p>
+    <div class="sl"><label for="r0">Latest move (r0)</label><input id="r0" type="range" min="-40" max="40" step="0.05" value="0"><output id="o0"></output></div>
+    <div class="sl"><label for="r1">Previous move (r1)</label><input id="r1" type="range" min="-40" max="40" step="0.05" value="0"><output id="o1"></output></div>
+    <div class="sl"><label for="r2">Move before (r2)</label><input id="r2" type="range" min="-40" max="40" step="0.05" value="0"><output id="o2"></output></div>
+    <div class="presets" id="presets"></div>
+    <div class="verdict">
+      <div><div class="muted">On-chain logit</div><div class="big" id="logit">…</div></div>
+      <div><div class="muted">Anomaly probability</div><div class="big" id="prob">…</div></div>
+      <div><div class="muted">What the contract would do</div><div class="big" id="decision">…</div></div>
+    </div>
+    <div class="bar"><div id="probbar"></div></div>
+  </div>
+
+  <h2>Every swap the network has scored</h2>
+  <div class="panel tablewrap"><table id="scored"><tr><td class="muted">Loading Scored events from Lasna…</td></tr></table></div>
+
+  <h2>Circuit breaker on Base Sepolia</h2>
+  <div class="panel tablewrap"><table id="trips"><tr><td class="muted">Loading breaker events from Base Sepolia…</td></tr></table></div>
+
+  <p class="muted" style="margin-top:28px">Sentinel · Reactive Omni Buildathon, track Reactive Meets AI · <a href="https://github.com/wwaterfall2027/reactive-sentinel">source</a>. Contracts: Sentinel <a href="https://lasna.reactscan.net/address/0x4FC812DFE1c4B1d316d528668D38246CC79b8549">0x4FC8…8549</a> (Lasna), CircuitBreaker <a href="https://sepolia.basescan.org/address/0x064Ee5E1127016DB7dA6A29755D83Ca02779d8D0">0x064E…d8D0</a> (Base Sepolia). Testnet only.</p>
+</main>
+<script type="module">
+  import { CFG, loadState, loadScored, loadTrips, scoreWindow } from './sentinel.js';
+  const $ = (s) => document.querySelector(s);
+  const fmtPct = (x) => `${x >= 0 ? '+' : ''}${x.toFixed(2)}%`;
+  const logitOf = (s) => Number(s) / 1e6;
+  const sigmoid = (z) => 1 / (1 + Math.exp(-z));
+  const short = (h) => `${h.slice(0, 6)}…${h.slice(-4)}`;
+
+  // Presets: the reference windows from test/Sentinel.t.sol plus the live dump.
+  const PRESETS = [
+    ['Calm', [0.1, -0.2, 0.05]], ['Legit 1.5% move', [1.5, 0.1, -0.1]], ['−12% spike', [-12, 0.1, 0]],
+    ['+8% spike', [8, 0, 0]], ['Pump then dump', [-9, 10, 0]], ['Fast two-step run', [3.5, 3.5, 0.1]],
+    ['≈ the live −35.86% dump', [-35.86, 0.3, -0.69]],
+  ];
+  $('#presets').innerHTML = PRESETS.map(([n], i) => `<button data-i="${i}">${n}</button>`).join('');
+  $('#presets').onclick = (e) => {
+    const i = e.target.dataset.i; if (i === undefined) return;
+    PRESETS[i][1].forEach((v, k) => { $('#r' + k).value = v; });
+    ask();
+  };
+
+  let seq = 0, timer;
+  async function ask() {
+    const r = [0, 1, 2].map((k) => Number($('#r' + k).value));
+    r.forEach((v, k) => { $('#o' + k).textContent = fmtPct(v); });
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const my = ++seq;
+      try {
+        const s = await scoreWindow(r[0], r[1], r[2]);
+        if (my !== seq) return;
+        const z = logitOf(s), p = sigmoid(z);
+        $('#logit').textContent = z.toFixed(3);
+        $('#prob').textContent = p > 0.9999 ? '>99.99%' : p < 0.0001 ? '<0.01%' : `${(p * 100).toFixed(2)}%`;
+        $('#probbar').style.width = `${p * 100}%`;
+        $('#decision').innerHTML = s > 0n ? '<span class="bad">Trip the breaker</span>' : '<span class="ok">Normal</span>';
+      } catch (e) { $('#decision').textContent = 'RPC error: ' + (e.shortMessage || e.message); }
+    }, 250);
+  }
+  ['r0', 'r1', 'r2'].forEach((id) => $('#' + id).addEventListener('input', ask));
+  ask();
+
+  async function main() {
+    try {
+      const st = await loadState();
+      $('#cards').innerHTML = [
+        ['Circuit breaker', st.breaker.tripped ? '<span class="bad">TRIPPED</span>' : '<span class="ok">armed</span>'],
+        ['Times tripped', st.breaker.trips],
+        ['Swaps scored on-chain', st.scored],
+        ['Last on-chain logit', (Number(st.lastScore) / 1e6).toFixed(3)],
+        ['Sentinel knows breaker is', st.sentinelSeesTripped ? 'tripped' : 'armed'],
+        ['Sentinel balance (lREACT)', Number(st.balance).toFixed(3)],
+      ].map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('');
+      $('#status').textContent = `Read live from the chains at ${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC`;
+    } catch (e) { $('#status').textContent = 'Could not read the contracts: ' + (e.shortMessage || e.message); }
+
+    try {
+      const rows = await loadScored();
+      $('#scored').innerHTML = '<tr><th>#</th><th>Base Sepolia swap block</th><th>Pool price</th><th>Move</th><th>On-chain logit</th><th>Decision</th><th>Lasna tx</th></tr>' +
+        rows.map((r, i) => `<tr><td>${i + 1}</td><td><a href="${CFG.baseBlock}${r.originBlock}" target="_blank" rel="noopener">${r.originBlock}</a></td><td>${r.price.toFixed(4)}</td><td>${fmtPct(r.retPct)}</td><td>${logitOf(r.score).toFixed(3)}</td><td>${r.score > 0n ? '<b class="bad">anomaly: trip</b>' : '<span class="ok">normal</span>'}</td><td><a href="${CFG.lasnaTx}${r.tx}" target="_blank" rel="noopener">${short(r.tx)}</a></td></tr>`).join('');
+    } catch (e) { $('#scored').innerHTML = `<tr><td class="bad">Could not load: ${e.shortMessage || e.message}</td></tr>`; }
+
+    try {
+      const trips = await loadTrips();
+      $('#trips').innerHTML = trips.length === 0 ? '<tr><td class="muted">No breaker events yet.</td></tr>' :
+        '<tr><th>Event</th><th>Base Sepolia block</th><th>Details</th><th>Tx</th></tr>' +
+        trips.map((t) => t.kind === 'Tripped'
+          ? `<tr><td class="bad"><b>Tripped</b></td><td>${t.block}</td><td>logit ${logitOf(t.score).toFixed(3)}; swap at block ${t.originBlock}; executed <b>${t.latencyBlocks} blocks later</b> (about ${(t.latencyBlocks * 0.2).toFixed(1)} s)</td><td><a href="${CFG.baseTx}${t.tx}" target="_blank" rel="noopener">${short(t.tx)}</a></td></tr>`
+          : `<tr><td class="ok">Reset</td><td>${t.block}</td><td>by ${short(t.by)}</td><td><a href="${CFG.baseTx}${t.tx}" target="_blank" rel="noopener">${short(t.tx)}</a></td></tr>`).join('');
+    } catch (e) { $('#trips').innerHTML = `<tr><td class="bad">Could not load: ${e.shortMessage || e.message}</td></tr>`; }
+    document.body.dataset.ready = '1';
+  }
+  main();
+</script>
+</body>
+</html>

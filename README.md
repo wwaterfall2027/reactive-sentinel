@@ -4,6 +4,12 @@ Reactive Omni Buildathon, track **Reactive Meets AI**.
 
 > A 6-8-1 neural network is executed **on-chain inside `react()`** on Reactive Network. It scores every price move of a pool on Base Sepolia. When it flags a manipulation-style move, it trips a circuit breaker that freezes withdrawals on Base Sepolia. The AI is not the tool that wrote the code: **it is the part of the running system that decides what the reactive contract does next.**
 
+**Live dashboard (no wallet needed):** https://wwaterfall2027.github.io/reactive-sentinel/app/
+
+- **Right now:** the breaker state, the trip count, how many swaps were scored and the Sentinel's lREACT balance, all read from the deployed contracts.
+- **Ask the deployed neural network:** move three sliders (the last three price moves). Each change calls `scoreOf()` on the deployed Sentinel, which uses the same on-chain weights that score real swaps. The presets reproduce the reference logits in `test/Sentinel.t.sol` exactly: −16.244, −7.972, 34.541, 20.978, 30.822 and 18.601.
+- **Every swap scored, and every breaker event:** the `Scored` events from Lasna and the `Tripped` / `Reset` events from Base Sepolia, each linked to the explorer.
+
 ## The loop
 
 ```
