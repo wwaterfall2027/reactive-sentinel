@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel Demo</title>
+<style>
+  :root { --bg: #0b1020; --fg: #e8ecf6; --muted: #9aa6c4; --accent: #7cf0c5; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #0b1020; --fg: #e8ecf6; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; padding: 16px; }
+  canvas { width: 100%; max-width: 1280px; aspect-ratio: 16 / 9; display: block; border-radius: 8px; }
+  #status { margin-top: 8px; color: var(--muted); }
+  button { margin-top: 8px; padding: 6px 12px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1280" height="720"></canvas>
+<div id="status">ready</div>
+<button id="preview">Preview</button>
+<button id="render">Render MP4</button>
+<script type="module">
+const W = 1280, H = 720, FPS = 30;
+const C = { bg: '#0b1020', panel: '#141b33', panel2: '#1b2442', fg: '#e8ecf6', muted: '#9aa6c4', accent: '#7cf0c5', warn: '#ffb86b', bad: '#ff6b81', blue: '#7aa2ff', purple: '#c49bff' };
+const cv = document.getElementById('c'), x = cv.getContext('2d');
+const status = (s) => { document.getElementById('status').textContent = s; };
+
+const SCENES = [
+  { d: 7, f: sceneTitle },
+  { d: 13, f: sceneProblem },
+  { d: 16, f: sceneModel },
+  { d: 24, f: sceneLive },
+  { d: 14, f: sceneSafety },
+  { d: 10, f: sceneEnd },
+];
+const TOTAL = SCENES.reduce((a, s) => a + s.d, 0);
+
+const ease = (t) => t < 0 ? 0 : t > 1 ? 1 : 1 - Math.pow(1 - t, 3);
+const fade = (t, at, dur = 0.6) => ease((t - at) / dur);
+function text(s, px, py, size, color = C.fg, weight = 400, align = 'left', alpha = 1) {
+  x.save(); x.globalAlpha = alpha; x.fillStyle = color; x.textAlign = align;
+  x.font = `${weight} ${size}px "Segoe UI", system-ui, sans-serif`; x.fillText(s, px, py); x.restore();
+}
+function mono(s, px, py, size, color = C.muted, alpha = 1, align = 'left') {
+  x.save(); x.globalAlpha = alpha; x.fillStyle = color; x.textAlign = align;
+  x.font = `500 ${size}px Consolas, "Cascadia Mono", monospace`; x.fillText(s, px, py); x.restore();
+}
+function rrect(px, py, w, h, r, fill, alpha = 1, stroke) {
+  x.save(); x.globalAlpha = alpha; x.beginPath(); x.roundRect(px, py, w, h, r);
+  if (fill) { x.fillStyle = fill; x.fill(); } if (stroke) { x.strokeStyle = stroke; x.lineWidth = 2; x.stroke(); } x.restore();
+}
+function arrow(x1, y1, x2, y2, color, alpha = 1, prog = 1, label) {
+  const xe = x1 + (x2 - x1) * prog, ye = y1 + (y2 - y1) * prog;
+  x.save(); x.globalAlpha = alpha; x.strokeStyle = color; x.fillStyle = color; x.lineWidth = 3;
+  x.beginPath(); x.moveTo(x1, y1); x.lineTo(xe, ye); x.stroke();
+  if (prog > 0.98) { const a = Math.atan2(y2 - y1, x2 - x1); x.beginPath(); x.moveTo(x2, y2);
+    x.lineTo(x2 - 14 * Math.cos(a - 0.4), y2 - 14 * Math.sin(a - 0.4)); x.lineTo(x2 - 14 * Math.cos(a + 0.4), y2 - 14 * Math.sin(a + 0.4)); x.fill(); }
+  x.restore();
+  if (label && prog > 0.98) text(label, (x1 + x2) / 2, (y1 + y2) / 2 - 12, 18, color, 600, 'center', alpha);
+}
+function header(t, kicker, title) { text(kicker, 80, 92, 18, C.accent, 700, 'left', fade(t, 0)); text(title, 80, 140, 40, C.fg, 700, 'left', fade(t, 0.15)); }
+function footer() { mono('Sentinel · Reactive Omni Buildathon · Reactive Meets AI', 80, 690, 15, C.muted, 0.7); }
+
+function sceneTitle(t) {
+  text('SENTINEL', W / 2, 300, 84, C.fg, 800, 'center', fade(t, 0.2, 1));
+  text('a neural network running inside a reactive contract', W / 2, 360, 30, C.accent, 500, 'center', fade(t, 0.9, 1));
+  text('Reactive Omni Buildathon  ·  track: Reactive Meets AI', W / 2, 430, 22, C.muted, 400, 'center', fade(t, 1.8, 1));
+}
+function sceneProblem(t) {
+  header(t, 'THE PROBLEM', 'Price manipulation drains protocols in a single block.');
+  [['A flash dump or pump-and-dump moves a pool 10–40% in one swap.', 1.2, C.fg],
+   ['Monitoring bots live off-chain: they lag, go down, or get front-run.', 3.5, C.fg],
+   ['By the time a human hits "pause", the money is gone.', 6, C.warn]].forEach(([s, at, c], i) => text(s, 80, 260 + i * 64, 27, c, i === 2 ? 600 : 400, 'left', fade(t, at)));
+  text('Sentinel puts the detector itself on-chain, inside Reactive.', 80, 540, 26, C.accent, 600, 'left', fade(t, 8.5));
+  footer();
+}
+function sceneModel(t) {
+  header(t, 'THE MODEL', 'A 6–8–1 neural network, executed in react().');
+  const xs = [260, 640, 1020], layers = [6, 8, 1], ys = (n) => Array.from({ length: n }, (_, i) => 230 + (i + 0.5) * (360 / n));
+  const a = fade(t, 1);
+  for (let l = 0; l < 2; l++) for (const y1 of ys(layers[l])) for (const y2 of ys(layers[l + 1])) { x.save(); x.globalAlpha = a * 0.25 * ease((t - 1.5 - l) / 1); x.strokeStyle = C.purple; x.lineWidth = 1; x.beginPath(); x.moveTo(xs[l], y1); x.lineTo(xs[l + 1], y2); x.stroke(); x.restore(); }
+  layers.forEach((n, l) => ys(n).forEach((y) => { x.save(); x.globalAlpha = a; x.fillStyle = l === 2 ? C.warn : l === 0 ? C.blue : C.purple; x.beginPath(); x.arc(xs[l], y, 12, 0, 7); x.fill(); x.restore(); }));
+  ['r0, r1, r2', '|r0|, |r1|, |r0+r1|'].forEach((s, i) => text(s, xs[0] - 40, 620 + i * 26, 18, C.blue, 600, 'center', fade(t, 3)));
+  text('8 ReLU units', xs[1], 620, 18, C.purple, 600, 'center', fade(t, 3.5));
+  text('logit > 0  ⇒  anomaly', xs[2], 620, 18, C.warn, 700, 'center', fade(t, 4));
+  text('Trained on 20k labelled windows · 99.98% held-out accuracy · 0 false positives', 640, 680, 18, C.accent, 600, 'center', fade(t, 6));
+}
+function sceneLive(t) {
+  header(t, 'LIVE ON TESTNET', 'Every swap scored on-chain. One verdict mattered.');
+  const rows = [['−0.40%', -15.1], ['+0.50%', -14.7], ['−0.69%', -12.5], ['+0.30%', -15.6], ['−35.86%', 111.4]];
+  const x0 = 640, scale = 4, y0 = 220;
+  x.save(); x.globalAlpha = fade(t, 0.6); x.strokeStyle = C.muted; x.lineWidth = 2; x.beginPath(); x.moveTo(x0, y0 - 20); x.lineTo(x0, y0 + 5 * 70); x.stroke(); x.restore();
+  rows.forEach(([ret, z], i) => {
+    const at = 1.2 + i * (i === 4 ? 2.2 : 1.6), a = fade(t, at), y = y0 + i * 70;
+    const w = Math.min(Math.abs(z) * scale, 520) * ease((t - at) / 0.8), col = z > 0 ? C.bad : C.accent;
+    rrect(z > 0 ? x0 : x0 - w, y, w, 44, 6, col, a);
+    text(`swap ${i + 1}: ${ret}`, 90, y + 30, 22, i === 4 ? C.bad : C.fg, i === 4 ? 800 : 400, 'left', a);
+    text(`${z > 0 ? '+' : ''}${z.toFixed(1)}M`, z > 0 ? x0 + w + 12 : x0 - w - 12, y + 30, 20, col, 700, z > 0 ? 'left' : 'right', a);
+  });
+  text('normal ←  score  → anomaly', 640, 600, 18, C.muted, 500, 'center', fade(t, 2));
+  text('Dump flagged → CircuitBreaker tripped 8 blocks (≈1.6 s) later → withdrawals Frozen()', 640, 650, 21, C.warn, 700, 'center', fade(t, 11));
+}
+function sceneSafety(t) {
+  header(t, 'BUILT TO BE TRUSTED', 'The AI decides; the contracts keep it honest.');
+  ['Only Reactive’s callback proxy + the authorized sentinel can trip the breaker', 'Quantized model reproduces the trained logits exactly (tested)', 'Fuzz test: moves within ±0.5% are never flagged', 'No duplicate trips while pending; re-arms after the owner resets', '11 / 11 Foundry tests, incl. the model and the reactive loop'].forEach((s, i) => text('✓  ' + s, 80, 240 + i * 66, 23, i === 4 ? C.accent : C.fg, i === 4 ? 600 : 400, 'left', fade(t, 1 + i * 1.2)));
+  footer();
+}
+function sceneEnd(t) {
+  text('AI in the loop, on-chain', W / 2, 250, 64, C.accent, 800, 'center', fade(t, 0.3));
+  text('not the tool that wrote the code — the part that decides', W / 2, 305, 24, C.muted, 400, 'center', fade(t, 1));
+  text('Sentinel (Lasna)', 640, 400, 20, C.purple, 700, 'center', fade(t, 2.5));
+  mono('0x4FC812DFE1c4B1d316d528668D38246CC79b8549', 640, 432, 22, C.fg, fade(t, 2.5), 'center');
+  text('CircuitBreaker (Base Sepolia)', 640, 480, 20, C.blue, 700, 'center', fade(t, 3.2));
+  mono('0x064Ee5E1127016DB7dA6A29755D83Ca02779d8D0', 640, 512, 22, C.fg, fade(t, 3.2), 'center');
+  text('SENTINEL', W / 2, 610, 40, C.fg, 800, 'center', fade(t, 5));
+}
+
+function drawFrame(sec) {
+  x.fillStyle = C.bg; x.fillRect(0, 0, W, H);
+  let acc = 0;
+  for (const s of SCENES) {
+    if (sec < acc + s.d) {
+      const local = sec - acc;
+      const fo = Math.min(1, (s.d - local) / 0.4);
+      x.save(); x.globalAlpha = Math.max(0, fo); s.f(local); x.restore();
+      break;
+    }
+    acc += s.d;
+  }
+  x.fillStyle = C.accent; x.fillRect(0, H - 4, W * (sec / TOTAL), 4);
+}
+
+let raf;
+document.getElementById('preview').onclick = () => {
+  cancelAnimationFrame(raf); const start = performance.now();
+  const loop = () => { const s = (performance.now() - start) / 1000; drawFrame(s % TOTAL); raf = requestAnimationFrame(loop); };
+  loop();
+};
+
+async function render() {
+  cancelAnimationFrame(raf);
+  const { Muxer, ArrayBufferTarget } = await import('https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/+esm');
+  const codec = 'avc1.640028';
+  const cfg = { codec, width: W, height: H, bitrate: 4_000_000, framerate: FPS, avc: { format: 'avc' } };
+  const sup = await VideoEncoder.isConfigSupported(cfg);
+  if (!sup.supported) throw new Error('H.264 encoding not supported here');
+  const target = new ArrayBufferTarget();
+  const muxer = new Muxer({ target, video: { codec: 'avc', width: W, height: H }, fastStart: 'in-memory' });
+  const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => { throw e; } });
+  enc.configure(cfg);
+  const frames = Math.round(TOTAL * FPS);
+  for (let i = 0; i < frames; i++) {
+    drawFrame(i / FPS);
+    const vf = new VideoFrame(cv, { timestamp: Math.round(i * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+    enc.encode(vf, { keyFrame: i % (FPS * 2) === 0 });
+    vf.close();
+    while (enc.encodeQueueSize > 20) await new Promise((r) => setTimeout(r, 5));
+    if (i % 30 === 0) { status(`encoding ${i}/${frames}`); window.__progress = i / frames; }
+  }
+  await enc.flush();
+  muxer.finalize();
+  const buf = target.buffer;
+  status(`encoded ${(buf.byteLength / 1e6).toFixed(2)} MB, uploading`);
+  const r = await fetch('/upload', { method: 'POST', body: buf, headers: { 'content-type': 'video/mp4' } });
+  const msg = await r.text();
+  status('done: ' + msg);
+  return { bytes: buf.byteLength, seconds: TOTAL, frames, server: msg };
+}
+window.renderDemo = render;
+window.drawFrame = drawFrame;
+window.TOTAL = TOTAL;
+document.getElementById('render').onclick = () => render().catch((e) => status('error: ' + e.message));
+drawFrame(2);
+</script>
+</body>
+</html>
